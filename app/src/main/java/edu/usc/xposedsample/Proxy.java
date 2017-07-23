@@ -42,7 +42,7 @@ import static de.robv.android.xposed.XposedHelpers.findAndHookMethod;
 public class Proxy implements IXposedHookLoadPackage{
     final public static String unknownCountKey = "unknownCount";
     final public static String subStrKey = "subStrings";
-    final public static String responseMapPath = "/sdcard/responsesMap.json";
+//    final public static String responseMapPath = "/sdcard/responsesMap.json";
     final public static String weatherPkg = "edu.usc.yixue.weatherapp";
     static JSONObject jsonResponses = null; //maintain the responsesResult in the memory
     static JSONObject weatherRequest = null; //maintain the substrings of weatherApp in the memory
@@ -55,11 +55,11 @@ public class Proxy implements IXposedHookLoadPackage{
              *  Replace: usc.yixue.Proxy.sendDef(String value, int nodeId, int index, String pkgName)
              *  file path: /sdcard/pkgName.json
              */
-            findAndHookMethod("usc.yixue.Proxy", loadPackageParam.classLoader, "sendDef", String.class, int.class, int.class, String.class, new XC_MethodReplacement() {
+            findAndHookMethod("usc.yixue.Proxy", loadPackageParam.classLoader, "sendDef", String.class, String.class, int.class, String.class, new XC_MethodReplacement() {
                         @Override
                         protected Object replaceHookedMethod(MethodHookParam param) throws Throwable {
                             String value = param.args[0].toString();
-                            int nodeId = (int)param.args[1];
+                            String nodeId = param.args[1].toString();
                             int index = (int)param.args[2];
                             String pkgName = param.args[3].toString();
                             Log.e("sendDef", value+"\t"+nodeId+"\t"+index+"\t"+pkgName);
@@ -70,7 +70,7 @@ public class Proxy implements IXposedHookLoadPackage{
                                 weatherRequest = (JSONObject) obj;
                                 Log.e("requests", weatherRequest.toJSONString());
                             }
-                            JSONObject node = (JSONObject)weatherRequest.get(""+nodeId);
+                            JSONObject node = (JSONObject)weatherRequest.get(nodeId);
                             Log.e("node", node.toJSONString());
                             JSONArray subStrings = (JSONArray) node.get(subStrKey);
                             //find the one that's being sent
@@ -154,7 +154,7 @@ public class Proxy implements IXposedHookLoadPackage{
                         protected Object replaceHookedMethod(MethodHookParam param) throws Throwable {
                             String paramValue = param.args[0].toString();
                             Log.e("triggerPrefetch", paramValue);
-                            String[] nodeIds = paramValue.split("#");
+                            String[] nodeIds = paramValue.split("@");
 //                            JSONParser parser = new JSONParser();
 //                            Object obj = parser.parse(new FileReader("/sdcard/"+weatherPkg+".json"));
 //                            JSONObject requests = (JSONObject) obj;
