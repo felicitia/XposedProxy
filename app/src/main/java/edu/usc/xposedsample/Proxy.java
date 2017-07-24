@@ -66,7 +66,33 @@ public class Proxy implements IXposedHookLoadPackage{
 
                             if(weatherRequest == null){
                                 JSONParser parser = new JSONParser();
-                                Object obj = parser.parse(new FileReader("/sdcard/"+pkgName+".json"));
+                                String requestMapStr = "{\n" +
+                                        "  \"755\": {\n" +
+                                        "    \"subStrings\": [\n" +
+                                        "      \"http://api.openweathermap.org/data/2.5/weather?units=Imperial&id=\",\n" +
+                                        "      \"null\",\n" +
+                                        "      \"&APPID=f46f62442611cdc087b629f6e87c7374\"\n" +
+                                        "    ],\n" +
+                                        "    \"unknownCount\": 1\n" +
+                                        "  },\n" +
+                                        "  \"751\": {\n" +
+                                        "    \"subStrings\": [\n" +
+                                        "      \"http://api.openweathermap.org/data/2.5/weather?units=Imperial&q=\",\n" +
+                                        "      \"null\",\n" +
+                                        "      \"&APPID=f46f62442611cdc087b629f6e87c7374\"\n" +
+                                        "    ],\n" +
+                                        "    \"unknownCount\": 1\n" +
+                                        "  },\n" +
+                                        "  \"759\": {\n" +
+                                        "    \"subStrings\": [\n" +
+                                        "      \"http://api.openweathermap.org/data/2.5/weather?units=Imperial&id=\",\n" +
+                                        "      \"null\",\n" +
+                                        "      \"&APPID=f46f62442611cdc087b629f6e87c7374\"\n" +
+                                        "    ],\n" +
+                                        "    \"unknownCount\": 1\n" +
+                                        "  }\n" +
+                                        "}";
+                                Object obj = parser.parse(requestMapStr);
                                 weatherRequest = (JSONObject) obj;
                                 Log.e("requests", weatherRequest.toJSONString());
                             }
