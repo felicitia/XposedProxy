@@ -46,11 +46,13 @@ public class Proxy implements IXposedHookLoadPackage{
     final public static String weatherPkg = "edu.usc.yixue.weatherapp";
     static JSONObject jsonResponses = null; //maintain the responsesResult in the memory
     static JSONObject weatherRequest = null; //maintain the substrings of weatherApp in the memory
+    static int timestampCounter = 0;
 
 
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam loadPackageParam) throws Throwable {
-        if(loadPackageParam.packageName.equals(weatherPkg)){
+//        if(loadPackageParam.packageName.equals(weatherPkg))
+        {
             /**
              *  Replace: usc.yixue.Proxy.sendDef(String value, int nodeId, int index, String pkgName)
              *  file path: /sdcard/pkgName.json
@@ -188,6 +190,21 @@ public class Proxy implements IXposedHookLoadPackage{
                                 JSONObject node = (JSONObject) weatherRequest.get(nodeId);
                                 prefetchNode(node);
                             }
+                            return null;
+                        }
+                    }
+            );
+
+            /***
+             * Replace: usc.yixue.Proxy.printTimeDiff(String sig, long timeDiff) and replace it with Log.e because it's more obvious to see in the logcat
+             */
+            findAndHookMethod("usc.yixue.Proxy", loadPackageParam.classLoader, "printTimeDiff", String.class, long.class, new XC_MethodReplacement() {
+                        @Override
+                        protected Object replaceHookedMethod(MethodHookParam param) throws Throwable {
+                            String sig = param.args[0].toString();
+                            long timeDiff = (long) param.args[1];
+                            Log.e("printTimeDiff", timestampCounter + "###" + sig+ "###" +timeDiff);
+                            timestampCounter++;
                             return null;
                         }
                     }
