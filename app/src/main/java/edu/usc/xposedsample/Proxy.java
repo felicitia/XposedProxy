@@ -1,35 +1,23 @@
 package edu.usc.xposedsample;
 
 import android.os.AsyncTask;
-import android.os.Bundle;
 import android.util.Base64;
 import android.util.Log;
-import android.view.View;
-import android.widget.AdapterView;
 
-import org.apache.commons.io.IOUtils;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.ObjectOutput;
 import java.io.ObjectOutputStream;
-import java.io.StringWriter;
 import java.net.URL;
 import java.net.URLConnection;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
-import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XC_MethodReplacement;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
@@ -45,7 +33,7 @@ public class Proxy implements IXposedHookLoadPackage{
 //    final public static String responseMapPath = "/sdcard/responsesMap.json";
     final public static String weatherPkg = "edu.usc.yixue.weatherapp";
     static JSONObject jsonResponses = null; //maintain the responsesResult in the memory
-    static JSONObject weatherRequest = null; //maintain the substrings of weatherApp in the memory
+    static JSONObject requestMap = null; //maintain the substrings of weatherApp in the memory
     static int timestampCounter = 0;
 
 
@@ -54,51 +42,28 @@ public class Proxy implements IXposedHookLoadPackage{
 //        if(loadPackageParam.packageName.equals(weatherPkg))
         {
             /**
-             *  Replace: usc.yixue.Proxy.sendDef(String value, int nodeId, int index, String pkgName)
-             *  file path: /sdcard/pkgName.json
+             *  Replace: usc.yixue.Proxy.sendDef(String body, String sig, String value, int nodeId, int index, String pkgName)
+             *  need to update requestMap value for different apps in this method
              */
-            findAndHookMethod("usc.yixue.Proxy", loadPackageParam.classLoader, "sendDef", String.class, String.class, int.class, String.class, new XC_MethodReplacement() {
+            findAndHookMethod("usc.yixue.Proxy", loadPackageParam.classLoader, "sendDef", String.class, String.class, String.class, String.class, int.class, String.class, new XC_MethodReplacement() {
                         @Override
                         protected Object replaceHookedMethod(MethodHookParam param) throws Throwable {
-                            String value = param.args[0].toString();
-                            String nodeId = param.args[1].toString();
-                            int index = (int)param.args[2];
-                            String pkgName = param.args[3].toString();
-                            Log.e("sendDef", value+"\t"+nodeId+"\t"+index+"\t"+pkgName);
+                            String body = param.args[0].toString();
+                            String sig = param.args[1].toString();
+                            String value = param.args[2].toString();
+                            String nodeId = param.args[3].toString();
+                            int index = (int)param.args[4];
+                            String pkgName = param.args[5].toString();
+                            Log.e("sendDef", body+"\t"+sig+"\t"+value+"\t"+nodeId+"\t"+index+"\t"+pkgName);
 
-                            if(weatherRequest == null){
+                            if(requestMap == null){
                                 JSONParser parser = new JSONParser();
-                                String requestMapStr = "{\n" +
-                                        "  \"755\": {\n" +
-                                        "    \"subStrings\": [\n" +
-                                        "      \"http://api.openweathermap.org/data/2.5/weather?units=Imperial&id=\",\n" +
-                                        "      \"null\",\n" +
-                                        "      \"&APPID=f46f62442611cdc087b629f6e87c7374\"\n" +
-                                        "    ],\n" +
-                                        "    \"unknownCount\": 1\n" +
-                                        "  },\n" +
-                                        "  \"751\": {\n" +
-                                        "    \"subStrings\": [\n" +
-                                        "      \"http://api.openweathermap.org/data/2.5/weather?units=Imperial&q=\",\n" +
-                                        "      \"null\",\n" +
-                                        "      \"&APPID=f46f62442611cdc087b629f6e87c7374\"\n" +
-                                        "    ],\n" +
-                                        "    \"unknownCount\": 1\n" +
-                                        "  },\n" +
-                                        "  \"759\": {\n" +
-                                        "    \"subStrings\": [\n" +
-                                        "      \"http://api.openweathermap.org/data/2.5/weather?units=Imperial&id=\",\n" +
-                                        "      \"null\",\n" +
-                                        "      \"&APPID=f46f62442611cdc087b629f6e87c7374\"\n" +
-                                        "    ],\n" +
-                                        "    \"unknownCount\": 1\n" +
-                                        "  }\n" +
-                                        "}";
+                                String requestMapStr = "{\"133030\":{\"subStrings\":[\"\",\"null\",\"!!!<com.google.android.gms.tagmanager.ap:java.lang.Stringjf()>2:$r3!!!\"],\"unknownCount\":1},\"169927\":{\"subStrings\":[\"\",\"null\",\"@parameter0:java.lang.Object[]\"],\"unknownCount\":1},\"142698\":{\"subStrings\":[\"https://ssl.google-analytics.com/collect\"],\"unknownCount\":0},\"142760\":{\"subStrings\":[\"http://www.google-analytics.com/collect\"],\"unknownCount\":0},\"153230\":{\"subStrings\":[\"\",\"null\",\"<com.google.android.gms.internal.cy:java.lang.StringpS>!<com.google.android.gms.internal.cy:voidaB()>!9\"],\"unknownCount\":1},\"32335\":{\"subStrings\":[\"\",\"null\",\"@parameter0:java.lang.Object[]\"],\"unknownCount\":1},\"32176\":{\"subStrings\":[\"\",\"null\",\"@parameter0:java.lang.Object[]\"],\"unknownCount\":1},\"135633\":{\"subStrings\":[\"null\"],\"unknownCount\":1},\"151604\":{\"subStrings\":[\"\",\"null\",\"@parameter0:java.lang.String\"],\"unknownCount\":1},\"42007\":{\"subStrings\":[\"\",\"null\",\"!!!<java.net.URLConnection:java.lang.StringgetHeaderField(java.lang.String)>30:$r2!!!\"],\"unknownCount\":1},\"41975\":{\"subStrings\":[\"\",\"null\",\"!!!<com.google.android.gms.internal.ck:java.lang.StringaI()>36:$r3!!!\"],\"unknownCount\":1},\"145145\":{\"subStrings\":[\"\",\"null\",\"@parameter0:java.lang.String\"],\"unknownCount\":1},\"24700\":{\"subStrings\":[\"null\"],\"unknownCount\":1},\"195839\":{\"subStrings\":[\"http://media.admob.com/mraid/v1/mraid_app_expanded_banner.js\"],\"unknownCount\":0}}";
                                 Object obj = parser.parse(requestMapStr);
-                                weatherRequest = (JSONObject) obj;
-                                Log.e("requests", weatherRequest.toJSONString());
+                                requestMap = (JSONObject) obj;
+                                Log.e("requests", requestMap.toJSONString());
                             }
-                            JSONObject node = (JSONObject)weatherRequest.get(nodeId);
+                            JSONObject node = (JSONObject) requestMap.get(nodeId);
                             Log.e("node", node.toJSONString());
                             JSONArray subStrings = (JSONArray) node.get(subStrKey);
                             //find the one that's being sent
@@ -111,10 +76,6 @@ public class Proxy implements IXposedHookLoadPackage{
                                 // if the substring is not null, only do the update, don't reduce the unknowncount
                                 subStrings.set(index, value);
                             }
-//                            FileWriter writer = new FileWriter("/sdcard/"+pkgName+".json");
-//                            writer.write(weatherRequest.toJSONString());
-//                            writer.flush();
-//                            writer.close();
                             return null;
                         }
                     }
@@ -187,7 +148,7 @@ public class Proxy implements IXposedHookLoadPackage{
 //                            Object obj = parser.parse(new FileReader("/sdcard/"+weatherPkg+".json"));
 //                            JSONObject requests = (JSONObject) obj;
                             for(String nodeId: nodeIds){
-                                JSONObject node = (JSONObject) weatherRequest.get(nodeId);
+                                JSONObject node = (JSONObject) requestMap.get(nodeId);
                                 prefetchNode(node);
                             }
                             return null;
@@ -196,15 +157,31 @@ public class Proxy implements IXposedHookLoadPackage{
             );
 
             /***
-             * Replace: usc.yixue.Proxy.printTimeDiff(String sig, long timeDiff) and replace it with Log.e because it's more obvious to see in the logcat
+             * Replace: usc.yixue.Proxy.printTimeDiff(String body, String sig, long timeDiff) and replace it with Log.e because it's more obvious to see in the logcat
              */
-            findAndHookMethod("usc.yixue.Proxy", loadPackageParam.classLoader, "printTimeDiff", String.class, long.class, new XC_MethodReplacement() {
+            findAndHookMethod("usc.yixue.Proxy", loadPackageParam.classLoader, "printTimeDiff", String.class, String.class, long.class, new XC_MethodReplacement() {
                         @Override
                         protected Object replaceHookedMethod(MethodHookParam param) throws Throwable {
-                            String sig = param.args[0].toString();
-                            long timeDiff = (long) param.args[1];
-                            Log.e("printTimeDiff", timestampCounter + "###" + sig+ "###" +timeDiff);
+                            String body = param.args[0].toString();
+                            String sig = param.args[1].toString();
+                            long timeDiff = (long) param.args[2];
+                            Log.e("printTimeDiff", timestampCounter + "\t" + body+"\t"+sig+ "\t" +timeDiff);
                             timestampCounter++;
+                            return null;
+                        }
+                    }
+            );
+
+            /***
+             * Replace: usc.yixue.Proxy.printUrl(String body, String sig, String url) and replace it with Log.e because it's more obvious to see in the logcat
+             */
+            findAndHookMethod("usc.yixue.Proxy", loadPackageParam.classLoader, "printUrl", String.class, String.class, String.class, new XC_MethodReplacement() {
+                        @Override
+                        protected Object replaceHookedMethod(MethodHookParam param) throws Throwable {
+                            String body = param.args[0].toString();
+                            String sig = param.args[1].toString();
+                            String url = param.args[2].toString();
+                            Log.e("printURL", body + "\t" + sig+ "\t" +url);
                             return null;
                         }
                     }
