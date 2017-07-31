@@ -14,8 +14,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectOutput;
 import java.io.ObjectOutputStream;
+import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLConnection;
+import java.nio.ByteBuffer;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodReplacement;
@@ -30,9 +32,10 @@ import static de.robv.android.xposed.XposedHelpers.findAndHookMethod;
 public class Proxy implements IXposedHookLoadPackage{
     final public static String unknownCountKey = "unknownCount";
     final public static String subStrKey = "subStrings";
-//    final public static String responseMapPath = "/sdcard/responsesMap.json";
-    final public static String weatherPkg = "edu.usc.yixue.weatherapp";
-    static JSONObject jsonResponses = null; //maintain the responsesResult in the memory
+    final public static int Prefetch_GETINPUTSTREAM = 0;
+    final public static int Prefetch_GETRESPONSECODE = 1;
+//    final public static String weatherPkg = "edu.usc.yixue.weatherapp";
+    static JSONObject responseMap = null; //maintain the responsesResult in the memory instead of file b/c the original app may not have storage access permissions
     static JSONObject requestMap = null; //maintain the substrings of weatherApp in the memory
     static int timestampCounter = 0;
 
@@ -42,7 +45,7 @@ public class Proxy implements IXposedHookLoadPackage{
 //        if(loadPackageParam.packageName.equals(weatherPkg))
         {
             /**
-             *  Replace: usc.yixue.Proxy.sendDef(String body, String sig, String value, int nodeId, int index, String pkgName)
+             *  Replace: usc.yixue.Proxy.sendDef(String body, String sig, String value, String nodeId, int index, String pkgName)
              *  need to update requestMap value for different apps in this method
              */
             findAndHookMethod("usc.yixue.Proxy", loadPackageParam.classLoader, "sendDef", String.class, String.class, String.class, String.class, int.class, String.class, new XC_MethodReplacement() {
@@ -91,41 +94,22 @@ public class Proxy implements IXposedHookLoadPackage{
                             URLConnection urlConn = (URLConnection) param.args[0];
                             String urlStr = urlConn.getURL().toString();
                             Log.e("getInputStream", urlStr);
-                            //if responseMap file doesn't exist, create it
-//                            File responseFile = new File(responseMapPath);
-//                            if(!responseFile.exists()){
-//                                responseFile.createNewFile();
-//                                return null;
-//                            }
-//                            //if responseMap file is empty
-//                            else if(responseFile.length()==0){
-//                                return urlConn.getInputStream();
-//                            }
-//                            else{
-                                if(jsonResponses == null){
+                                if(responseMap == null){
 //                                    JSONParser parser = new JSONParser();
-//                                    jsonResponses = (JSONObject) parser.parse(new FileReader(responseMapPath));
-                                    jsonResponses = new JSONObject();
+//                                    responseMap = (JSONObject) parser.parse(new FileReader(responseMapPath));
+                                    responseMap = new JSONObject();
                                 }
                                 //already have response ready for the specific url
-                                if(jsonResponses.containsKey(urlStr)){
-                                    Log.e("jsonResponses", "yup");
-                                    byte[] byteResult = Base64.decode(jsonResponses.get(urlStr).toString(), Base64.DEFAULT);
+                                if(responseMap.containsKey(urlStr)){
+                                    Log.e("responseMap", "yup");
+                                    byte[] byteResult = Base64.decode(responseMap.get(urlStr).toString(), Base64.DEFAULT);
                                     return new ByteArrayInputStream(byteResult);
                                 }else {
-                                    Log.e("jsonResponses", "nope");
+                                    Log.e("responseMap", "nope");
                                     final InputStream inputStream = urlConn.getInputStream();
                                     byte[] byteResult = getbytesFromInputStream(inputStream);
                                     if(byteResult != null){
-                                        jsonResponses.put(urlStr, Base64.encodeToString(byteResult, Base64.DEFAULT));
-//                                        try {
-//                                            FileWriter writer = new FileWriter(responseFile.getAbsoluteFile());
-//                                            writer.write(jsonResponses.toJSONString());
-//                                            writer.flush();
-//                                            writer.close();
-//                                        } catch (IOException e) {
-//                                            e.printStackTrace();
-//                                        }
+                                        responseMap.put(urlStr, Base64.encodeToString(byteResult, Base64.DEFAULT));
                                     }
                                     return new ByteArrayInputStream(byteResult);
                                 }
@@ -135,21 +119,50 @@ public class Proxy implements IXposedHookLoadPackage{
             );
 
             /**
-             * Replace: usc.yixue.Proxy.triggerPrefetch(String nodeIds), this method is inserted before every return statement in each trigger method
-             * file path: /sdcard/pkgName.json
+             * Replace: usc.yixue.Proxy.getResponseCode(HttpURLConnection urlConn)
+             *
              */
-            findAndHookMethod("usc.yixue.Proxy", loadPackageParam.classLoader, "triggerPrefetch", String.class, new XC_MethodReplacement() {
+            findAndHookMethod("usc.yixue.Proxy", loadPackageParam.classLoader, "getResponseCode", HttpURLConnection.class, new XC_MethodReplacement() {
                         @Override
                         protected Object replaceHookedMethod(MethodHookParam param) throws Throwable {
-                            String paramValue = param.args[0].toString();
-                            Log.e("triggerPrefetch", paramValue);
+                            HttpURLConnection urlConn = (HttpURLConnection) param.args[0];
+                            String urlStr = urlConn.getURL().toString();
+                            Log.e("getResponseCode", urlStr);
+                            if(responseMap == null){
+                                responseMap = new JSONObject();
+                            }
+                            //already have response ready for the specific url
+                            if(responseMap.containsKey(urlStr)){
+                                Log.e("responseMap", "yup");
+                                int cachedResponseCode = (int)responseMap.get(urlStr);
+                                return cachedResponseCode;
+                            }else {
+                                Log.e("responseMap", "nope");
+                                final int responseCode = urlConn.getResponseCode();
+                                responseMap.put(urlStr, responseCode);
+                                return responseCode;
+                            }
+//                            }
+                        }
+                    }
+            );
+
+            /**
+             * Replace: usc.yixue.Proxy.triggerPrefetch(String body, String sig, String nodeIds), this method is inserted before every return statement in each trigger method
+             *
+             */
+            findAndHookMethod("usc.yixue.Proxy", loadPackageParam.classLoader, "triggerPrefetch", String.class, String.class, String.class, int.class, new XC_MethodReplacement() {
+                        @Override
+                        protected Object replaceHookedMethod(MethodHookParam param) throws Throwable {
+                            String body = param.args[0].toString();
+                            String sig = param.args[1].toString();
+                            String paramValue = param.args[2].toString();
+                            int Prefetch_Method = (int) param.args[3];
+                            Log.e("triggerPrefetch", body+"\t"+sig+"\t"+paramValue);
                             String[] nodeIds = paramValue.split("@");
-//                            JSONParser parser = new JSONParser();
-//                            Object obj = parser.parse(new FileReader("/sdcard/"+weatherPkg+".json"));
-//                            JSONObject requests = (JSONObject) obj;
                             for(String nodeId: nodeIds){
                                 JSONObject node = (JSONObject) requestMap.get(nodeId);
-                                prefetchNode(node);
+                                prefetchNode(node, Prefetch_Method);
                             }
                             return null;
                         }
@@ -198,10 +211,10 @@ public class Proxy implements IXposedHookLoadPackage{
 //                            Log.e("param size: ", ""+param.args.length);
 //                            String urlStr = param.args[0].toString();
 //                            JSONParser parser = new JSONParser();
-//                            jsonResponses = (JSONObject) parser.parse(new FileReader(responseMapPath));
+//                            responseMap = (JSONObject) parser.parse(new FileReader(responseMapPath));
 //                            //already have response ready for the specific url
-//                            if(jsonResponses.containsKey(urlStr)){
-//                                return jsonResponses.get(urlStr).toString();
+//                            if(responseMap.containsKey(urlStr)){
+//                                return responseMap.get(urlStr).toString();
 //                            }else {
 //                                executePrefetch(urlStr);
 //                            }
@@ -257,20 +270,20 @@ public class Proxy implements IXposedHookLoadPackage{
 //                            String urlStr = urlConn.getURL().toString();
 //                            Log.e("param string", urlStr);
 //                            JSONParser parser = new JSONParser();
-//                            jsonResponses = (JSONObject) parser.parse(new FileReader(responseMapPath));
+//                            responseMap = (JSONObject) parser.parse(new FileReader(responseMapPath));
 ////                            //already have response ready for the specific url
-//                            if(jsonResponses.containsKey(urlStr)){
-//                                Log.e("jsonResponses", "yup");
-//                                return jsonResponses.get(urlStr).toString();
+//                            if(responseMap.containsKey(urlStr)){
+//                                Log.e("responseMap", "yup");
+//                                return responseMap.get(urlStr).toString();
 //                            }else {
-//                                Log.e("jsonResponses", "nope");
+//                                Log.e("responseMap", "nope");
 //                                final Object result = urlConn.getContent();
-//                                byte[] byteResult = getbytesFromObject(result);
+//                                byte[] byteResult = getBytesFromObject(result);
 //                                if(byteResult != null){
-//                                    jsonResponses.put(urlStr, byteResult);
+//                                    responseMap.put(urlStr, byteResult);
 //                                    try {
 //                                        FileWriter writer = new FileWriter(responseMapPath);
-//                                        writer.write(jsonResponses.toJSONString());
+//                                        writer.write(responseMap.toJSONString());
 //                                        writer.flush();
 //                                        writer.close();
 //                                    } catch (IOException e) {
@@ -287,17 +300,25 @@ public class Proxy implements IXposedHookLoadPackage{
 
     }
 
-    public void executePrefetch(String urlStr){
+    public void executePrefetch(String urlStr, int Prefetch_METHOD){
         Log.e("execute prefetch", "url = "+urlStr);
-        PrefetchTask prefetchTask = new PrefetchTask();
-        prefetchTask.execute(urlStr);
+        switch (Prefetch_METHOD){
+            case Prefetch_GETINPUTSTREAM:
+                PrefetchGetInputStreamTask prefetchGetInputStreamTask = new PrefetchGetInputStreamTask();
+                prefetchGetInputStreamTask.execute(urlStr);
+                break;
+            case Prefetch_GETRESPONSECODE:
+                PrefetchGetResponseCodeTask prefetchGetResponseCodeTask = new PrefetchGetResponseCodeTask();
+                prefetchGetResponseCodeTask.execute(urlStr);
+                break;
+        }
     }
 
     /**
      * only if all the sub strings are known && the result is not cached already
      * @param node
      */
-    public void prefetchNode(JSONObject node){
+    public void prefetchNode(JSONObject node, int Prefetch_METHOD){
         //only prefetch if every substring is known
         if(0 == Integer.parseInt(node.get(unknownCountKey).toString())){
             JSONArray subStrings = (JSONArray) node.get(subStrKey);
@@ -305,29 +326,16 @@ public class Proxy implements IXposedHookLoadPackage{
             for(int i=0; i<subStrings.size(); i++){
                 url.append(subStrings.get(i));
             }
-//            JSONParser parser = new JSONParser();
-//            File file = new File(responseMapPath);
-//            if(file.exists()){
-//                Object obj = parser.parse(new FileReader(responseMapPath));
-//                jsonResponses = (JSONObject) obj;
-//                if(!jsonResponses.containsKey(url.toString())){
-//                    executePrefetch(url.toString());
-//                }
-//            }else{
-                //if responsesMap.json doesn't exist
-//                jsonResponses = new JSONObject();
-//                executePrefetch(url.toString());
-//            }
-            if(jsonResponses == null){
-                jsonResponses = new JSONObject();
+            if(responseMap == null){
+                responseMap = new JSONObject();
             }
-            if(!jsonResponses.containsKey(url.toString())){
-                executePrefetch(url.toString());
+            if(!responseMap.containsKey(url.toString())){
+                executePrefetch(url.toString(), Prefetch_METHOD);
             }
         }
     }
 
-        private class PrefetchTask extends AsyncTask<String, Void, Response> {
+        private class PrefetchGetInputStreamTask extends AsyncTask<String, Void, Response> {
 
         @Override
         protected Response doInBackground(String... urlStrs){
@@ -345,23 +353,46 @@ public class Proxy implements IXposedHookLoadPackage{
                     e.printStackTrace();
                 }
             }
-            Log.e("error", "error in PrefetchTask");
+            Log.e("error", "error in PrefetchGetInputStreamTask");
             return null;
         }
 
         @Override
         protected void onPostExecute(Response result) {
             if(result != null){
-                jsonResponses.put(result.key, Base64.encodeToString(result.value, Base64.DEFAULT));
-//                FileWriter writer = null;
-//                try {
-//                    writer = new FileWriter(responseMapPath);
-//                    writer.write(jsonResponses.toJSONString());
-//                    writer.flush();
-//                    writer.close();
-//                } catch (IOException e) {
-//                    e.printStackTrace();
-//                }
+                responseMap.put(result.key, Base64.encodeToString(result.value, Base64.DEFAULT));
+            }
+
+        }
+    }
+
+    private class PrefetchGetResponseCodeTask extends AsyncTask<String, Void, Response> {
+
+        @Override
+        protected Response doInBackground(String... urlStrs){
+            for(String urlStr: urlStrs) {
+                try {
+                    URL url = new URL(urlStr);
+                    Response result = new Response();
+                    result.key = urlStr;
+                    HttpURLConnection urlConnection = (HttpURLConnection)url.openConnection();
+                    int responseCode = urlConnection.getResponseCode();
+                    result.value =  getBytesFromInt(responseCode);
+                    urlConnection.disconnect();
+                    return result;
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+            Log.e("error", "error in PrefetchGetResponseCodeTask");
+            return null;
+        }
+
+        @Override
+        protected void onPostExecute(Response result) {
+            if(result != null){
+                //if Prefetch_Method is getResponseCode, then just store the int value in the responseMap
+                responseMap.put(result.key, getIntFromBytes(result.value));
             }
 
         }
@@ -383,7 +414,15 @@ public class Proxy implements IXposedHookLoadPackage{
 
     }
 
-    static byte[] getbytesFromObject(Object obj){
+    static  byte[] getBytesFromInt(int value){
+        return  ByteBuffer.allocate(4).putInt(value).array();
+    }
+
+    static int getIntFromBytes(byte[] bytes) {
+        return ByteBuffer.wrap(bytes).getInt();
+    }
+
+    static byte[] getBytesFromObject(Object obj){
         ByteArrayOutputStream bos = null;
         ObjectOutput out = null;
         byte[] bytes = null;
