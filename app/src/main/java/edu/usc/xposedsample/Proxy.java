@@ -37,6 +37,7 @@ public class Proxy implements IXposedHookLoadPackage{
 //    final public static String weatherPkg = "edu.usc.yixue.weatherapp";
     static JSONObject responseMap = null; //maintain the responsesResult in the memory instead of file b/c the original app may not have storage access permissions
     static JSONObject requestMap = null; //maintain the substrings of weatherApp in the memory
+    static String initialRequestMapStr = "{\"2439\":{\"subStrings\":[\"https://customerservice.southerncompany.com/\"],\"unknownCount\":0}}";
     static int timestampCounter = 0;
 
 
@@ -61,10 +62,9 @@ public class Proxy implements IXposedHookLoadPackage{
 
                             if(requestMap == null){
                                 JSONParser parser = new JSONParser();
-                                String requestMapStr = "{\"133030\":{\"subStrings\":[\"\",\"null\",\"!!!<com.google.android.gms.tagmanager.ap:java.lang.Stringjf()>2:$r3!!!\"],\"unknownCount\":1},\"169927\":{\"subStrings\":[\"\",\"null\",\"@parameter0:java.lang.Object[]\"],\"unknownCount\":1},\"142698\":{\"subStrings\":[\"https://ssl.google-analytics.com/collect\"],\"unknownCount\":0},\"142760\":{\"subStrings\":[\"http://www.google-analytics.com/collect\"],\"unknownCount\":0},\"153230\":{\"subStrings\":[\"\",\"null\",\"<com.google.android.gms.internal.cy:java.lang.StringpS>!<com.google.android.gms.internal.cy:voidaB()>!9\"],\"unknownCount\":1},\"32335\":{\"subStrings\":[\"\",\"null\",\"@parameter0:java.lang.Object[]\"],\"unknownCount\":1},\"32176\":{\"subStrings\":[\"\",\"null\",\"@parameter0:java.lang.Object[]\"],\"unknownCount\":1},\"135633\":{\"subStrings\":[\"null\"],\"unknownCount\":1},\"151604\":{\"subStrings\":[\"\",\"null\",\"@parameter0:java.lang.String\"],\"unknownCount\":1},\"42007\":{\"subStrings\":[\"\",\"null\",\"!!!<java.net.URLConnection:java.lang.StringgetHeaderField(java.lang.String)>30:$r2!!!\"],\"unknownCount\":1},\"41975\":{\"subStrings\":[\"\",\"null\",\"!!!<com.google.android.gms.internal.ck:java.lang.StringaI()>36:$r3!!!\"],\"unknownCount\":1},\"145145\":{\"subStrings\":[\"\",\"null\",\"@parameter0:java.lang.String\"],\"unknownCount\":1},\"24700\":{\"subStrings\":[\"null\"],\"unknownCount\":1},\"195839\":{\"subStrings\":[\"http://media.admob.com/mraid/v1/mraid_app_expanded_banner.js\"],\"unknownCount\":0}}";
-                                Object obj = parser.parse(requestMapStr);
+                                Object obj = parser.parse(initialRequestMapStr);
                                 requestMap = (JSONObject) obj;
-                                Log.e("requests", requestMap.toJSONString());
+//                                Log.e("requests", requestMap.toJSONString());
                             }
                             JSONObject node = (JSONObject) requestMap.get(nodeId);
                             Log.e("node", node.toJSONString());
@@ -99,6 +99,7 @@ public class Proxy implements IXposedHookLoadPackage{
 //                                    responseMap = (JSONObject) parser.parse(new FileReader(responseMapPath));
                                     responseMap = new JSONObject();
                                 }
+                                Log.e("responseMap", responseMap.toJSONString());
                                 //already have response ready for the specific url
                                 if(responseMap.containsKey(urlStr)){
                                     Log.e("responseMap", "yup");
@@ -131,6 +132,7 @@ public class Proxy implements IXposedHookLoadPackage{
                             if(responseMap == null){
                                 responseMap = new JSONObject();
                             }
+                            Log.e("responseMap", responseMap.toJSONString());
                             //already have response ready for the specific url
                             if(responseMap.containsKey(urlStr)){
                                 Log.e("responseMap", "yup");
@@ -160,6 +162,12 @@ public class Proxy implements IXposedHookLoadPackage{
                             int Prefetch_Method = (int) param.args[3];
                             Log.e("triggerPrefetch", body+"\t"+sig+"\t"+paramValue);
                             String[] nodeIds = paramValue.split("@");
+                            if(requestMap == null){
+                                JSONParser parser = new JSONParser();
+                                Object obj = parser.parse(initialRequestMapStr);
+                                requestMap = (JSONObject) obj;
+//                                Log.e("requests", requestMap.toJSONString());
+                            }
                             for(String nodeId: nodeIds){
                                 JSONObject node = (JSONObject) requestMap.get(nodeId);
                                 prefetchNode(node, Prefetch_Method);
@@ -393,6 +401,7 @@ public class Proxy implements IXposedHookLoadPackage{
             if(result != null){
                 //if Prefetch_Method is getResponseCode, then just store the int value in the responseMap
                 responseMap.put(result.key, getIntFromBytes(result.value));
+                Log.e("responseMap in onPost", responseMap.toJSONString());
             }
 
         }
