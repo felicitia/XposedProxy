@@ -18,6 +18,9 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLConnection;
 import java.nio.ByteBuffer;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.CountDownLatch;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodReplacement;
@@ -30,13 +33,14 @@ import static de.robv.android.xposed.XposedHelpers.findAndHookMethod;
  */
 
 public class Proxy implements IXposedHookLoadPackage{
-    final public static String unknownCountKey = "unknownCount";
-    final public static String subStrKey = "subStrings";
-    final public static int Prefetch_GETINPUTSTREAM = 0;
-    final public static int Prefetch_GETRESPONSECODE = 1;
-//    final public static String weatherPkg = "edu.usc.yixue.weatherapp";
+    final private static String unknownCountKey = "unknownCount";
+    final private static String subStrKey = "subStrings";
+    final private static int Prefetch_GETINPUTSTREAM = 0;
+    final private static int Prefetch_GETRESPONSECODE = 1;
+    final private  static String WAIT_FLAG = "WAIT";
+    private static Map<String, CountDownLatch> countDownLatchMap = new HashMap<String, CountDownLatch>(); //maintain latch for each URL
     static JSONObject responseMap = null; //maintain the responsesResult in the memory instead of file b/c the original app may not have storage access permissions
-    static JSONObject requestMap = null; //maintain the substrings of weatherApp in the memory
+    static JSONObject requestMap = null; //maintain the requestMap in the memory
     static String initialRequestMapStr = "{\"2439\":{\"subStrings\":[\"https://customerservice.southerncompany.com/\"],\"unknownCount\":0}}";
     static int timestampCounter = 0;
 
@@ -58,26 +62,27 @@ public class Proxy implements IXposedHookLoadPackage{
                             String nodeId = param.args[3].toString();
                             int index = (int)param.args[4];
                             String pkgName = param.args[5].toString();
-                            Log.e("sendDef", body+"\t"+sig+"\t"+value+"\t"+nodeId+"\t"+index+"\t"+pkgName);
+                            Log.e("sendDef()", body+"\t"+sig+"\t"+value+"\t"+nodeId+"\t"+index+"\t"+pkgName);
 
                             if(requestMap == null){
                                 JSONParser parser = new JSONParser();
                                 Object obj = parser.parse(initialRequestMapStr);
                                 requestMap = (JSONObject) obj;
-//                                Log.e("requests", requestMap.toJSONString());
                             }
                             JSONObject node = (JSONObject) requestMap.get(nodeId);
-                            Log.e("node", node.toJSONString());
-                            JSONArray subStrings = (JSONArray) node.get(subStrKey);
-                            //find the one that's being sent
-                            if(subStrings.get(index).equals("null")){
-                                subStrings.set(index, value);
-                                int count = Integer.parseInt(node.get(unknownCountKey).toString());
-                                count--;
-                                node.put(unknownCountKey, count);
-                            }else {
-                                // if the substring is not null, only do the update, don't reduce the unknowncount
-                                subStrings.set(index, value);
+                            if(node != null){
+                                Log.e("node in sendDef()", node.toJSONString());
+                                JSONArray subStrings = (JSONArray) node.get(subStrKey);
+                                //find the one that's being sent
+                                if(subStrings.get(index).equals("null")){
+                                    subStrings.set(index, value);
+                                    int count = Integer.parseInt(node.get(unknownCountKey).toString());
+                                    count--;
+                                    node.put(unknownCountKey, count);
+                                }else {
+                                    // if the substring is not null, only do the update, don't reduce the unknowncount
+                                    subStrings.set(index, value);
+                                }
                             }
                             return null;
                         }
@@ -86,23 +91,27 @@ public class Proxy implements IXposedHookLoadPackage{
 
             /**
              * Replace: usc.yixue.Proxy.getInputStream(URLConnection urlConn)
-             * file path: /sdcard/responseMapPath
+             *
              */
             findAndHookMethod("usc.yixue.Proxy", loadPackageParam.classLoader, "getInputStream", URLConnection.class, new XC_MethodReplacement() {
                         @Override
                         protected Object replaceHookedMethod(MethodHookParam param) throws Throwable {
                             URLConnection urlConn = (URLConnection) param.args[0];
                             String urlStr = urlConn.getURL().toString();
-                            Log.e("getInputStream", urlStr);
+                            Log.e("getInputStream()", urlStr);
                                 if(responseMap == null){
-//                                    JSONParser parser = new JSONParser();
-//                                    responseMap = (JSONObject) parser.parse(new FileReader(responseMapPath));
                                     responseMap = new JSONObject();
                                 }
                                 Log.e("responseMap", responseMap.toJSONString());
                                 //already have response ready for the specific url
                                 if(responseMap.containsKey(urlStr)){
                                     Log.e("responseMap", "yup");
+                                    // wait for the prefetch to return the response
+                                    if(responseMap.get(urlStr).equals(WAIT_FLAG)){
+                                        CountDownLatch countDownLatch = new CountDownLatch(1);
+                                        countDownLatch.await();
+                                        countDownLatchMap.put(urlStr, countDownLatch);
+                                    }
                                     byte[] byteResult = Base64.decode(responseMap.get(urlStr).toString(), Base64.DEFAULT);
                                     return new ByteArrayInputStream(byteResult);
                                 }else {
@@ -128,7 +137,7 @@ public class Proxy implements IXposedHookLoadPackage{
                         protected Object replaceHookedMethod(MethodHookParam param) throws Throwable {
                             HttpURLConnection urlConn = (HttpURLConnection) param.args[0];
                             String urlStr = urlConn.getURL().toString();
-                            Log.e("getResponseCode", urlStr);
+                            Log.e("getResponseCode()", urlStr);
                             if(responseMap == null){
                                 responseMap = new JSONObject();
                             }
@@ -136,6 +145,12 @@ public class Proxy implements IXposedHookLoadPackage{
                             //already have response ready for the specific url
                             if(responseMap.containsKey(urlStr)){
                                 Log.e("responseMap", "yup");
+                                // wait for the prefetch to return the response
+                                if(responseMap.get(urlStr).equals(WAIT_FLAG)){
+                                    CountDownLatch countDownLatch = new CountDownLatch(1);
+                                    countDownLatch.await();
+                                    countDownLatchMap.put(urlStr, countDownLatch);
+                                }
                                 int cachedResponseCode = (int)responseMap.get(urlStr);
                                 return cachedResponseCode;
                             }else {
@@ -144,7 +159,6 @@ public class Proxy implements IXposedHookLoadPackage{
                                 responseMap.put(urlStr, responseCode);
                                 return responseCode;
                             }
-//                            }
                         }
                     }
             );
@@ -160,13 +174,12 @@ public class Proxy implements IXposedHookLoadPackage{
                             String sig = param.args[1].toString();
                             String paramValue = param.args[2].toString();
                             int Prefetch_Method = (int) param.args[3];
-                            Log.e("triggerPrefetch", body+"\t"+sig+"\t"+paramValue);
+                            Log.e("triggerPrefetch()", body+"\t"+sig+"\t"+paramValue);
                             String[] nodeIds = paramValue.split("@");
                             if(requestMap == null){
                                 JSONParser parser = new JSONParser();
                                 Object obj = parser.parse(initialRequestMapStr);
                                 requestMap = (JSONObject) obj;
-//                                Log.e("requests", requestMap.toJSONString());
                             }
                             for(String nodeId: nodeIds){
                                 JSONObject node = (JSONObject) requestMap.get(nodeId);
@@ -186,7 +199,7 @@ public class Proxy implements IXposedHookLoadPackage{
                             String body = param.args[0].toString();
                             String sig = param.args[1].toString();
                             long timeDiff = (long) param.args[2];
-                            Log.e("printTimeDiff", timestampCounter + "\t" + body+"\t"+sig+ "\t" +timeDiff);
+                            Log.e("printTimeDiff()", timestampCounter + "\t" + body+"\t"+sig+ "\t" +timeDiff);
                             timestampCounter++;
                             return null;
                         }
@@ -202,7 +215,7 @@ public class Proxy implements IXposedHookLoadPackage{
                             String body = param.args[0].toString();
                             String sig = param.args[1].toString();
                             String url = param.args[2].toString();
-                            Log.e("printURL", body + "\t" + sig+ "\t" +url);
+                            Log.e("printURL()", body + "\t" + sig+ "\t" +url);
                             return null;
                         }
                     }
@@ -210,106 +223,10 @@ public class Proxy implements IXposedHookLoadPackage{
 
         }
 
-//        if (loadPackageParam.packageName.equals("this is the old code...")){
-//
-//
-//            findAndHookMethod("edu.usc.yixue.weatherapp.Proxy", loadPackageParam.classLoader, "getResult", String.class, new XC_MethodReplacement() {
-//                        @Override
-//                        protected Object replaceHookedMethod(MethodHookParam param) throws Throwable {
-//                            Log.e("param size: ", ""+param.args.length);
-//                            String urlStr = param.args[0].toString();
-//                            JSONParser parser = new JSONParser();
-//                            responseMap = (JSONObject) parser.parse(new FileReader(responseMapPath));
-//                            //already have response ready for the specific url
-//                            if(responseMap.containsKey(urlStr)){
-//                                return responseMap.get(urlStr).toString();
-//                            }else {
-//                                executePrefetch(urlStr);
-//                            }
-//                            return null;
-//                        }
-//                    }
-//            );
-//
-//            findAndHookMethod("edu.usc.yixue.weatherapp.MainActivity", loadPackageParam.classLoader, "onCreate", Bundle.class, new XC_MethodHook() {
-//                @Override
-//                protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-//                    JSONParser parser = new JSONParser();
-//                    Object obj = parser.parse(new FileReader(requestMapPath));
-//                    JSONObject jsonObject = (JSONObject) obj;
-//                    JSONObject requests = (JSONObject) jsonObject.get("edu.usc.yixue.weatherapp");
-//
-//                    JSONObject node = (JSONObject) requests.get("" + 269);
-//                    prefetchNode(node);
-//                    node = (JSONObject) requests.get("" + 272);
-//                    prefetchNode(node);
-//                    node = (JSONObject) requests.get("" + 275);
-//                    prefetchNode(node);
-//                }
-//            });
-//
-//            findAndHookMethod("edu.usc.yixue.weatherapp.MainActivity$OnCityNameSelectedListener", loadPackageParam.classLoader, "onItemSelected", AdapterView.class, View.class, int.class, long.class, new XC_MethodHook() {
-//                @Override
-//                protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-//                    JSONParser parser = new JSONParser();
-//                    Object obj = parser.parse(new FileReader(requestMapPath));
-//                    JSONObject jsonObject = (JSONObject) obj;
-//                    JSONObject requests = (JSONObject) jsonObject.get("edu.usc.yixue.weatherapp");
-//
-//                    JSONObject node = (JSONObject) requests.get("" + 269);
-//                    prefetchNode(node);
-//                    node = (JSONObject) requests.get("" + 272);
-//                    prefetchNode(node);
-//                    node = (JSONObject) requests.get("" + 275);
-//                    prefetchNode(node);
-//                }
-//            });
-//        }
-
-        /**
-         * com.newsblur: getContent(URLConnection urlConn)
-         */
-//        if (loadPackageParam.packageName.equals("com.newsblur")){
-//            findAndHookMethod("usc.yixue.Proxy", loadPackageParam.classLoader, "getContent", URLConnection.class, new XC_MethodReplacement() {
-//                        @Override
-//                        protected Object replaceHookedMethod(MethodHookParam param) throws Throwable {
-//                            Log.e("param size", ""+param.args.length);
-//                            URLConnection urlConn = (URLConnection) param.args[0];
-//                            String urlStr = urlConn.getURL().toString();
-//                            Log.e("param string", urlStr);
-//                            JSONParser parser = new JSONParser();
-//                            responseMap = (JSONObject) parser.parse(new FileReader(responseMapPath));
-////                            //already have response ready for the specific url
-//                            if(responseMap.containsKey(urlStr)){
-//                                Log.e("responseMap", "yup");
-//                                return responseMap.get(urlStr).toString();
-//                            }else {
-//                                Log.e("responseMap", "nope");
-//                                final Object result = urlConn.getContent();
-//                                byte[] byteResult = getBytesFromObject(result);
-//                                if(byteResult != null){
-//                                    responseMap.put(urlStr, byteResult);
-//                                    try {
-//                                        FileWriter writer = new FileWriter(responseMapPath);
-//                                        writer.write(responseMap.toJSONString());
-//                                        writer.flush();
-//                                        writer.close();
-//                                    } catch (IOException e) {
-//                                        e.printStackTrace();
-//                                    }
-//                                }
-//                                return result;
-//                            }
-//                        }
-//                    }
-//            );
-//
-//        }
-
     }
 
     public void executePrefetch(String urlStr, int Prefetch_METHOD){
-        Log.e("execute prefetch", "url = "+urlStr);
+        Log.e("executePrefetch()", "url = "+urlStr);
         switch (Prefetch_METHOD){
             case Prefetch_GETINPUTSTREAM:
                 PrefetchGetInputStreamTask prefetchGetInputStreamTask = new PrefetchGetInputStreamTask();
@@ -320,6 +237,7 @@ public class Proxy implements IXposedHookLoadPackage{
                 prefetchGetResponseCodeTask.execute(urlStr);
                 break;
         }
+
     }
 
     /**
@@ -338,6 +256,13 @@ public class Proxy implements IXposedHookLoadPackage{
                 responseMap = new JSONObject();
             }
             if(!responseMap.containsKey(url.toString())){
+                /**
+                 * set WAIT_FLAG means this request is already prefetched.
+                 * so if the response is not in the cache when the actual request is sent,
+                 * wait for the prefetched response instead of making another request.
+                 */
+                responseMap.put(url.toString(), WAIT_FLAG);
+                Log.e("setWaitFlag", responseMap.toJSONString());
                 executePrefetch(url.toString(), Prefetch_METHOD);
             }
         }
@@ -355,6 +280,12 @@ public class Proxy implements IXposedHookLoadPackage{
                     URLConnection urlConnection = url.openConnection();
                     InputStream inputStream = urlConnection.getInputStream();
                     result.value =  getbytesFromInputStream(inputStream);
+                    responseMap.put(result.key, Base64.encodeToString(result.value, Base64.DEFAULT));
+                    Log.e("responseMap updates", responseMap.toJSONString());
+                    CountDownLatch countDownLatch = countDownLatchMap.get(urlStr);
+                    if(countDownLatch != null){
+                        countDownLatch.countDown();
+                    }
                     inputStream.close();
                     return result;
                 } catch (IOException e) {
@@ -365,13 +296,6 @@ public class Proxy implements IXposedHookLoadPackage{
             return null;
         }
 
-        @Override
-        protected void onPostExecute(Response result) {
-            if(result != null){
-                responseMap.put(result.key, Base64.encodeToString(result.value, Base64.DEFAULT));
-            }
-
-        }
     }
 
     private class PrefetchGetResponseCodeTask extends AsyncTask<String, Void, Response> {
@@ -386,6 +310,13 @@ public class Proxy implements IXposedHookLoadPackage{
                     HttpURLConnection urlConnection = (HttpURLConnection)url.openConnection();
                     int responseCode = urlConnection.getResponseCode();
                     result.value =  getBytesFromInt(responseCode);
+                    //if Prefetch_Method is getResponseCode, then just store the int value in the responseMap
+                    responseMap.put(result.key, getIntFromBytes(result.value));
+                    Log.e("responseMap updates", responseMap.toJSONString());
+                    CountDownLatch countDownLatch = countDownLatchMap.get(urlStr);
+                    if(countDownLatch != null){
+                        countDownLatch.countDown();
+                    }
                     urlConnection.disconnect();
                     return result;
                 } catch (IOException e) {
@@ -394,16 +325,6 @@ public class Proxy implements IXposedHookLoadPackage{
             }
             Log.e("error", "error in PrefetchGetResponseCodeTask");
             return null;
-        }
-
-        @Override
-        protected void onPostExecute(Response result) {
-            if(result != null){
-                //if Prefetch_Method is getResponseCode, then just store the int value in the responseMap
-                responseMap.put(result.key, getIntFromBytes(result.value));
-                Log.e("responseMap in onPost", responseMap.toJSONString());
-            }
-
         }
     }
 
