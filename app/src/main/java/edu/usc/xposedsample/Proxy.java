@@ -126,13 +126,13 @@ public class Proxy implements IXposedHookLoadPackage{
                                 //already have response ready for the specific url
                                 if(responseMap.containsKey(urlStr)){
                                     // wait for the prefetch to return the response
+                                    Log.e("responseMap", "yup\t"+urlStr);
                                     if(responseMap.get(urlStr).equals(WAIT_FLAG)){
-                                        Log.e("responseMap", "yup but wait\t"+urlStr);
+                                        Log.e("responseMap", "wait\t"+urlStr);
                                         CountDownLatch countDownLatch = new CountDownLatch(1);
                                         countDownLatch.await();
                                         countDownLatchMap.put(urlStr, countDownLatch);
                                     }
-                                    Log.e("responseMap", "yup\t"+urlStr);
                                     byte[] byteResult = Base64.decode(responseMap.get(urlStr).toString(), Base64.DEFAULT);
                                     return new ByteArrayInputStream(byteResult);
                                 }else {
@@ -168,7 +168,7 @@ public class Proxy implements IXposedHookLoadPackage{
                                 Log.e("responseMap", "yup\t"+urlStr);
                                 // wait for the prefetch to return the response
                                 if(responseMap.get(urlStr).equals(WAIT_FLAG)){
-                                    Log.e("responseMap", "yup but wait\t"+urlStr);
+                                    Log.e("responseMap", "wait\t"+urlStr);
                                     CountDownLatch countDownLatch = new CountDownLatch(1);
                                     countDownLatch.await();
                                     countDownLatchMap.put(urlStr, countDownLatch);
@@ -204,7 +204,7 @@ public class Proxy implements IXposedHookLoadPackage{
                                 Log.e("responseMap", "yup");
                                 // wait for the prefetch to return the response
                                 if(responseMap.get(urlStr).equals(WAIT_FLAG)){
-                                    Log.e("responseMap", "yup but wait\t"+urlStr);
+                                    Log.e("responseMap", "wait\t"+urlStr);
                                     CountDownLatch countDownLatch = new CountDownLatch(1);
                                     countDownLatch.await();
                                     countDownLatchMap.put(urlStr, countDownLatch);
@@ -252,7 +252,7 @@ public class Proxy implements IXposedHookLoadPackage{
                                 Log.e("value", responseMap.get(urlStr).toString());
                                 // wait for the prefetch to return the response
                                 if(responseMap.get(urlStr).equals(WAIT_FLAG)){
-                                    Log.e("responseMap", "yup but wait\t"+urlStr);
+                                    Log.e("responseMap", "wait\t"+urlStr);
                                     CountDownLatch countDownLatch = new CountDownLatch(1);
                                     if(countDownLatchMap.get(urlStr) == null){
                                         countDownLatchMap.put(urlStr, countDownLatch);
@@ -296,7 +296,7 @@ public class Proxy implements IXposedHookLoadPackage{
 //                                Log.e("requestMap in null", requestMap.toJSONString());
                             }
                             for(String nodeId: nodeIds){
-                                Log.e("nodeId", nodeId);
+//                                Log.e("nodeId", nodeId);
                                 Log.e("requestMap", requestMap.toJSONString());
                                 JSONObject node = (JSONObject) requestMap.get(nodeId);
                                 Log.e("node in trigger", node.toJSONString());
@@ -505,6 +505,7 @@ public class Proxy implements IXposedHookLoadPackage{
             for(String urlStr: urlStrs) {
                 try {
                     URL url = new URL(urlStr);
+                    Log.e("doInBg", urlStr);
                     Response result = new Response();
                     result.key = urlStr;
                     HttpURLConnection urlConnection = (HttpURLConnection)url.openConnection();
